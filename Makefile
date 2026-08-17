@@ -1,4 +1,8 @@
-.PHONY: lint test build dev dev-mock format spec
+.PHONY: lint test build dev dev-mock format spec be-generate be-build be-run be-test be-lint
+
+SPEC := spec/tsp-output/@typespec/openapi3/openapi.yaml
+BACKEND := backend
+OAPI := $(shell go env GOPATH)/bin/oapi-codegen
 
 # --- Фронтенд ---
 
@@ -24,3 +28,20 @@ format:
 
 spec:
 	cd spec && npm run compile
+
+
+
+be-generate:
+	cd $(BACKEND) && $(OAPI) --config api/oapi-codegen.yaml "$(abspath $(SPEC))"
+
+be-build:
+	cd $(BACKEND) && go build ./...
+
+be-run:
+	cd $(BACKEND) && go run .
+
+be-test:
+	cd $(BACKEND) && go test ./...
+
+be-lint:
+	cd $(BACKEND) && go vet ./...
