@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen } from '@testing-library/react'
 
 import { ApiError } from '@/api/errors'
@@ -7,12 +7,19 @@ import { renderWithProviders, queryResult } from '@/test/render'
 
 const mocks = vi.hoisted(() => {
   const fn = () => vi.fn()
-  return { useEventTypes: fn() }
+  return { useEventTypes: fn(), useGuest: fn(), useCreateGuest: fn() }
 })
 
 vi.mock('@/api/queries', () => ({
   useEventTypes: mocks.useEventTypes,
+  useGuest: mocks.useGuest,
+  useCreateGuest: mocks.useCreateGuest,
 }))
+
+const GUEST_UNKNOWN = queryResult({
+  error: new ApiError(404, 'GUEST_UNKNOWN', 'Профиль гостя не найден.'),
+  isError: true,
+})
 
 const SAMPLE = [
   {
@@ -30,6 +37,11 @@ const SAMPLE = [
 ]
 
 describe('EventTypesPage', () => {
+  beforeEach(() => {
+    mocks.useGuest.mockReturnValue(GUEST_UNKNOWN)
+    mocks.useCreateGuest.mockReturnValue({ mutate: vi.fn(), isPending: false, error: null })
+  })
+
   it('показывает список типов событий с названием, описанием и длительностью', () => {
     mocks.useEventTypes.mockReturnValue(queryResult({ data: SAMPLE }))
     renderWithProviders(<EventTypesPage />)

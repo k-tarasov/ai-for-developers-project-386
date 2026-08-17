@@ -22,6 +22,10 @@ export const useCreateEventType = impl.useCreateEventType
 export const useUpdateEventType = impl.useUpdateEventType
 export const useDeleteEventType = impl.useDeleteEventType
 export const useUpdateSchedule = impl.useUpdateSchedule
+export const useLoginOwner = impl.useLoginOwner
+export const useGuest = impl.useGuest
+export const useCreateGuest = impl.useCreateGuest
+export const useUpdateGuest = impl.useUpdateGuest
 
 export type {
   EventType,
@@ -30,4 +34,7 @@ export type {
   Slot,
   Booking,
   BookingCreate,
+  OwnerLogin,
+  GuestProfile,
+  GuestCreate,
 } from './queries.api'

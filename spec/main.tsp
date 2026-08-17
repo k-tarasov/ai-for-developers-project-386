@@ -145,6 +145,52 @@ model Booking {
   createdAt: utcDateTime;
 }
 
+/** Данные для входа владельца. */
+model OwnerLogin {
+  /** Логин владельца, задан статически при старте сервера. */
+  login: string;
+
+  /** Пароль владельца, задан статически при старте сервера. */
+  password: string;
+}
+
+/** Успешный вход: сессия выдаётся через httpOnly cookie `owner_session`. */
+model AuthSuccess {
+  ok: true;
+}
+
+/** Профиль гостя, идентифицируемый по httpOnly cookie `guest_id`. */
+model GuestProfile {
+  /** Идентификатор гостя (совпадает с cookie `guest_id`). */
+  id: string;
+
+  /** Имя гостя. */
+  name: string;
+
+  /** Телефон гостя. */
+  guestPhone?: string;
+
+  /** Email гостя. */
+  @format("email")
+  guestEmail?: string;
+}
+
+/** Данные для создания/идентификации гостя. */
+model GuestCreate {
+  /** Имя гостя. */
+  name: string;
+
+  /** Телефон гостя. */
+  guestPhone?: string;
+
+  /** Email гостя. */
+  @format("email")
+  guestEmail?: string;
+
+  /** Запомнить гостя на 30 дней (cookie `guest_id` со сроком 30 дней). */
+  rememberMe: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Ошибки
 // ---------------------------------------------------------------------------
@@ -178,6 +224,30 @@ model ConflictError {
   message: string;
 }
 
+@error
+model UnauthorizedError {
+  @statusCode
+  _: 401;
+  code: "INVALID_CREDENTIALS" | "NO_OWNER_SESSION";
+  message: string;
+}
+
+@error
+model LoginThrottledError {
+  @statusCode
+  _: 429;
+  code: "LOGIN_ATTEMPTS_EXCEEDED";
+  message: string;
+}
+
+@error
+model GuestUnknownError {
+  @statusCode
+  _: 404;
+  code: "GUEST_UNKNOWN";
+  message: string;
+}
+
 // ---------------------------------------------------------------------------
 // Типы событий
 // ---------------------------------------------------------------------------
@@ -195,17 +265,21 @@ interface EventTypes {
 
   /** Создать тип события. id (slug) задаёт владелец, дубликат → 409. */
   @post
-  create(@body body: EventType): {
+  create( @body body: EventType): {
     @statusCode
     _: 201;
     @body
     eventType: EventType;
-  } | BadRequestError | ConflictError;
+  } | BadRequestError | ConflictError | UnauthorizedError;
 
   /** Обновить тип события. Поле id в теле игнорируется. */
   @route("/{eventTypeId}")
   @put
-  update(@path eventTypeId: string, @body body: EventType): EventType | BadRequestError | NotFoundError;
+  update(
+  
+    @path eventTypeId: string,
+    @body body: EventType,
+  ): EventType | BadRequestError | NotFoundError | UnauthorizedError;
 
   /**
    * Удалить тип события. Существующие брони этого типа сохраняются,
@@ -213,10 +287,10 @@ interface EventTypes {
    */
   @route("/{eventTypeId}")
   @delete
-  delete(@path eventTypeId: string): {
+  delete( @path eventTypeId: string): {
     @statusCode
     _: 204;
-  } | NotFoundError;
+  } | NotFoundError | UnauthorizedError;
 
   /**
    * Свободные слоты типа события на окно записи (14 дней).
@@ -236,11 +310,14 @@ interface EventTypes {
 interface Schedule {
   /** Текущее расписание владельца по умолчанию. */
   @get
-  get(): WeeklySchedule;
+  get(): WeeklySchedule | UnauthorizedError;
 
   /** Полностью заменить расписание владельца по умолчанию. */
   @put
-  update(@body body: WeeklySchedule): WeeklySchedule | BadRequestError;
+  update(
+  
+    @body body: WeeklySchedule,
+  ): WeeklySchedule | BadRequestError | UnauthorizedError;
 }
 
 // ---------------------------------------------------------------------------
@@ -263,5 +340,70 @@ interface Bookings {
 
   /** Предстоящие брони всех типов событий (startsAt >= сейчас), по возрастанию startsAt. */
   @get
-  list(): Booking[];
+  list(): Booking[] | UnauthorizedError;
+}
+
+// ---------------------------------------------------------------------------
+// Аутентификация владельца
+// ---------------------------------------------------------------------------
+
+/** Сессия владельца выдаётся в httpOnly cookie `owner_session`. */
+model OwnerSessionCookie {
+  @header("Set-Cookie")
+  "set-cookie": string;
+}
+
+@route("/auth")
+interface Auth {
+  /**
+   * Вход владельца по логину и паролю. При успехе устанавливает httpOnly cookie
+   * `owner_session`. При неверных данных — 401 `INVALID_CREDENTIALS`.
+   * При превышении лимита неудачных попыток — 429 `LOGIN_ATTEMPTS_EXCEEDED`.
+   */
+  @post
+  @route("/login")
+  login(@body body: OwnerLogin):
+    | (AuthSuccess & OwnerSessionCookie & { @statusCode _: 200 })
+    | UnauthorizedError
+    | LoginThrottledError;
+}
+
+// ---------------------------------------------------------------------------
+// Профиль гостя
+// ---------------------------------------------------------------------------
+
+/** Идентификация гостя происходит по httpOnly cookie `guest_id`. */
+model GuestIdCookie {
+  @header("Set-Cookie")
+  "set-cookie": string;
+}
+
+@route("/guest")
+interface Guest {
+  /**
+   * Профиль гостя по известной cookie `guest_id`. Без cookie или с неизвестной
+   * cookie — 404 `GUEST_UNKNOWN`.
+   */
+  @get
+  get(): GuestProfile | GuestUnknownError;
+
+  /**
+   * Создать/идентифицировать гостя. При `rememberMe=true` cookie `guest_id`
+   * выдаётся со сроком 30 дней, иначе — сессионная. Без контакта — 400.
+   */
+  @post
+  create(@body body: GuestCreate):
+    | (GuestProfile & GuestIdCookie & { @statusCode _: 201 })
+    | BadRequestError
+    | GuestUnknownError;
+
+  /**
+   * Обновить профиль знакомого гостя. Без валидной cookie `guest_id` — 404
+   * `GUEST_UNKNOWN`.
+   */
+  @put
+  update( @body body: GuestProfile):
+    GuestProfile
+    | BadRequestError
+    | GuestUnknownError;
 }

@@ -4,6 +4,27 @@
  */
 
 export interface paths {
+    "/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Вход владельца по логину и паролю. При успехе устанавливает httpOnly cookie
+         *     `owner_session`. При неверных данных — 401 `INVALID_CREDENTIALS`.
+         *     При превышении лимита неудачных попыток — 429 `LOGIN_ATTEMPTS_EXCEEDED`.
+         */
+        post: operations["Auth_login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/bookings": {
         parameters: {
             query?: never;
@@ -86,6 +107,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/guest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Профиль гостя по известной cookie `guest_id`. Без cookie или с неизвестной
+         *     cookie — 404 `GUEST_UNKNOWN`.
+         */
+        get: operations["Guest_get"];
+        /**
+         * @description Обновить профиль знакомого гостя. Без валидной cookie `guest_id` — 404
+         *     `GUEST_UNKNOWN`.
+         */
+        put: operations["Guest_update"];
+        /**
+         * @description Создать/идентифицировать гостя. При `rememberMe=true` cookie `guest_id`
+         *     выдаётся со сроком 30 дней, иначе — сессионная. Без контакта — 400.
+         */
+        post: operations["Guest_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/schedule": {
         parameters: {
             query?: never;
@@ -108,6 +157,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description Успешный вход: сессия выдаётся через httpOnly cookie `owner_session`. */
+        AuthSuccess: {
+            /** @enum {boolean} */
+            ok: true;
+        };
         BadRequestError: {
             /** @enum {string} */
             code: "VALIDATION_ERROR" | "CONTACT_REQUIRED" | "SLOT_MISALIGNED" | "SLOT_OUT_OF_WINDOW" | "SLOT_OUTSIDE_SCHEDULE";
@@ -179,11 +233,60 @@ export interface components {
              */
             availability?: components["schemas"]["WeeklySchedule"];
         };
+        /** @description Данные для создания/идентификации гостя. */
+        GuestCreate: {
+            /** @description Имя гостя. */
+            name: string;
+            /** @description Телефон гостя. */
+            guestPhone?: string;
+            /**
+             * Format: email
+             * @description Email гостя.
+             */
+            guestEmail?: string;
+            /** @description Запомнить гостя на 30 дней (cookie `guest_id` со сроком 30 дней). */
+            rememberMe: boolean;
+        };
+        /** @description Идентификация гостя происходит по httpOnly cookie `guest_id`. */
+        GuestIdCookie: Record<string, never>;
+        /** @description Профиль гостя, идентифицируемый по httpOnly cookie `guest_id`. */
+        GuestProfile: {
+            /** @description Идентификатор гостя (совпадает с cookie `guest_id`). */
+            id: string;
+            /** @description Имя гостя. */
+            name: string;
+            /** @description Телефон гостя. */
+            guestPhone?: string;
+            /**
+             * Format: email
+             * @description Email гостя.
+             */
+            guestEmail?: string;
+        };
+        GuestUnknownError: {
+            /** @enum {string} */
+            code: "GUEST_UNKNOWN";
+            message: string;
+        };
+        LoginThrottledError: {
+            /** @enum {string} */
+            code: "LOGIN_ATTEMPTS_EXCEEDED";
+            message: string;
+        };
         NotFoundError: {
             /** @enum {string} */
             code: "EVENT_TYPE_NOT_FOUND";
             message: string;
         };
+        /** @description Данные для входа владельца. */
+        OwnerLogin: {
+            /** @description Логин владельца, задан статически при старте сервера. */
+            login: string;
+            /** @description Пароль владельца, задан статически при старте сервера. */
+            password: string;
+        };
+        /** @description Сессия владельца выдаётся в httpOnly cookie `owner_session`. */
+        OwnerSessionCookie: Record<string, never>;
         /** @description Свободный слот длиной в длительность типа события. */
         Slot: {
             /** Format: date-time */
@@ -219,6 +322,11 @@ export interface components {
              */
             end: string;
         };
+        UnauthorizedError: {
+            /** @enum {string} */
+            code: "INVALID_CREDENTIALS" | "NO_OWNER_SESSION";
+            message: string;
+        };
         /** @description Недельное расписание. Пустой массив интервалов — день недоступен. */
         WeeklySchedule: {
             /** @description Понедельник. */
@@ -245,6 +353,49 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    Auth_login: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OwnerLogin"];
+            };
+        };
+        responses: {
+            /** @description The request has succeeded. */
+            200: {
+                headers: {
+                    "Set-Cookie": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSuccess"];
+                };
+            };
+            /** @description Access is unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnauthorizedError"];
+                };
+            };
+            /** @description Client error */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginThrottledError"];
+                };
+            };
+        };
+    };
     Bookings_list: {
         parameters: {
             query?: never;
@@ -261,6 +412,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Booking"][];
+                };
+            };
+            /** @description Access is unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnauthorizedError"];
                 };
             };
         };
@@ -367,6 +527,15 @@ export interface operations {
                     "application/json": components["schemas"]["BadRequestError"];
                 };
             };
+            /** @description Access is unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnauthorizedError"];
+                };
+            };
             /** @description The request conflicts with the current state of the server. */
             409: {
                 headers: {
@@ -442,6 +611,15 @@ export interface operations {
                     "application/json": components["schemas"]["BadRequestError"];
                 };
             };
+            /** @description Access is unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnauthorizedError"];
+                };
+            };
             /** @description The server cannot find the requested resource. */
             404: {
                 headers: {
@@ -470,6 +648,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Access is unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnauthorizedError"];
+                };
             };
             /** @description The server cannot find the requested resource. */
             404: {
@@ -513,6 +700,120 @@ export interface operations {
             };
         };
     };
+    Guest_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The request has succeeded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestProfile"];
+                };
+            };
+            /** @description The server cannot find the requested resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestUnknownError"];
+                };
+            };
+        };
+    };
+    Guest_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuestProfile"];
+            };
+        };
+        responses: {
+            /** @description The request has succeeded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestProfile"];
+                };
+            };
+            /** @description The server could not understand the request due to invalid syntax. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BadRequestError"];
+                };
+            };
+            /** @description The server cannot find the requested resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestUnknownError"];
+                };
+            };
+        };
+    };
+    Guest_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuestCreate"];
+            };
+        };
+        responses: {
+            /** @description The request has succeeded and a new resource has been created as a result. */
+            201: {
+                headers: {
+                    "Set-Cookie": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestProfile"];
+                };
+            };
+            /** @description The server could not understand the request due to invalid syntax. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BadRequestError"];
+                };
+            };
+            /** @description The server cannot find the requested resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestUnknownError"];
+                };
+            };
+        };
+    };
     Schedule_get: {
         parameters: {
             query?: never;
@@ -529,6 +830,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WeeklySchedule"];
+                };
+            };
+            /** @description Access is unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnauthorizedError"];
                 };
             };
         };
@@ -562,6 +872,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BadRequestError"];
+                };
+            };
+            /** @description Access is unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnauthorizedError"];
                 };
             };
         };

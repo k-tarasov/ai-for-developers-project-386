@@ -10,6 +10,9 @@ export type TimeInterval = components['schemas']['TimeInterval']
 export type Slot = components['schemas']['Slot']
 export type Booking = components['schemas']['Booking']
 export type BookingCreate = components['schemas']['BookingCreate']
+export type OwnerLogin = components['schemas']['OwnerLogin']
+export type GuestProfile = components['schemas']['GuestProfile']
+export type GuestCreate = components['schemas']['GuestCreate']
 
 export const queryKeys = {
   eventTypes: ['event-types'] as const,
@@ -17,6 +20,7 @@ export const queryKeys = {
   slots: (eventTypeId: string) => ['slots', eventTypeId] as const,
   schedule: ['schedule'] as const,
   bookings: ['bookings'] as const,
+  guest: ['guest'] as const,
 }
 
 export function useEventTypes() {
@@ -106,6 +110,40 @@ export function useUpdateSchedule() {
     mutationFn: (body: WeeklySchedule) => unwrap(api.PUT('/schedule', { body })),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.schedule })
+    },
+  })
+}
+
+export function useLoginOwner() {
+  return useMutation({
+    mutationFn: (body: OwnerLogin) => unwrap(api.POST('/auth/login', { body })),
+  })
+}
+
+export function useGuest() {
+  return useQuery({
+    queryKey: queryKeys.guest,
+    queryFn: () => unwrap(api.GET('/guest')),
+    retry: false,
+  })
+}
+
+export function useCreateGuest() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: GuestCreate) => unwrap(api.POST('/guest', { body })),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.guest })
+    },
+  })
+}
+
+export function useUpdateGuest() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: GuestProfile) => unwrap(api.PUT('/guest', { body })),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.guest })
     },
   })
 }

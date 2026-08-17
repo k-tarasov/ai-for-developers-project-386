@@ -22,6 +22,44 @@ info:
   version: 0.0.0
 tags: []
 paths:
+  /auth/login:
+    post:
+      operationId: Auth_login
+      description: |-
+        Вход владельца по логину и паролю. При успехе устанавливает httpOnly cookie
+        `owner_session`. При неверных данных — 401 `INVALID_CREDENTIALS`.
+        При превышении лимита неудачных попыток — 429 `LOGIN_ATTEMPTS_EXCEEDED`.
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          headers:
+            Set-Cookie:
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSuccess'
+        '401':
+          description: Access is unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthorizedError'
+        '429':
+          description: Client error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginThrottledError'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OwnerLogin'
   /bookings:
     post:
       operationId: Bookings_create
@@ -73,6 +111,12 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Booking'
+        '401':
+          description: Access is unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthorizedError'
   /event-types:
     get:
       operationId: EventTypes_list
@@ -104,6 +148,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BadRequestError'
+        '401':
+          description: Access is unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthorizedError'
         '409':
           description: The request conflicts with the current state of the server.
           content:
@@ -161,6 +211,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BadRequestError'
+        '401':
+          description: Access is unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthorizedError'
         '404':
           description: The server cannot find the requested resource.
           content:
@@ -187,6 +243,12 @@ paths:
       responses:
         '204':
           description: 'There is no content to send for this request, but the headers may be useful. '
+        '401':
+          description: Access is unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthorizedError'
         '404':
           description: The server cannot find the requested resource.
           content:
@@ -219,6 +281,93 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NotFoundError'
+  /guest:
+    get:
+      operationId: Guest_get
+      description: |-
+        Профиль гостя по известной cookie `guest_id`. Без cookie или с неизвестной
+        cookie — 404 `GUEST_UNKNOWN`.
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuestProfile'
+        '404':
+          description: The server cannot find the requested resource.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuestUnknownError'
+    post:
+      operationId: Guest_create
+      description: |-
+        Создать/идентифицировать гостя. При `rememberMe=true` cookie `guest_id`
+        выдаётся со сроком 30 дней, иначе — сессионная. Без контакта — 400.
+      parameters: []
+      responses:
+        '201':
+          description: The request has succeeded and a new resource has been created as a result.
+          headers:
+            Set-Cookie:
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuestProfile'
+        '400':
+          description: The server could not understand the request due to invalid syntax.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestError'
+        '404':
+          description: The server cannot find the requested resource.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuestUnknownError'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GuestCreate'
+    put:
+      operationId: Guest_update
+      description: |-
+        Обновить профиль знакомого гостя. Без валидной cookie `guest_id` — 404
+        `GUEST_UNKNOWN`.
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuestProfile'
+        '400':
+          description: The server could not understand the request due to invalid syntax.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestError'
+        '404':
+          description: The server cannot find the requested resource.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuestUnknownError'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GuestProfile'
   /schedule:
     get:
       operationId: Schedule_get
@@ -231,6 +380,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/WeeklySchedule'
+        '401':
+          description: Access is unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthorizedError'
     put:
       operationId: Schedule_update
       description: Полностью заменить расписание владельца по умолчанию.
@@ -248,6 +403,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BadRequestError'
+        '401':
+          description: Access is unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthorizedError'
       requestBody:
         required: true
         content:
@@ -256,6 +417,16 @@ paths:
               $ref: '#/components/schemas/WeeklySchedule'
 components:
   schemas:
+    AuthSuccess:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+          enum:
+            - true
+      description: 'Успешный вход: сессия выдаётся через httpOnly cookie `owner_session`.'
     BadRequestError:
       type: object
       required:
@@ -391,6 +562,73 @@ components:
             Собственное расписание доступности. Если не задано — используется
             расписание владельца по умолчанию (GET/PUT /schedule).
       description: Тип события — вид брони, который публикует владелец календаря.
+    GuestCreate:
+      type: object
+      required:
+        - name
+        - rememberMe
+      properties:
+        name:
+          type: string
+          description: Имя гостя.
+        guestPhone:
+          type: string
+          description: Телефон гостя.
+        guestEmail:
+          type: string
+          format: email
+          description: Email гостя.
+        rememberMe:
+          type: boolean
+          description: Запомнить гостя на 30 дней (cookie `guest_id` со сроком 30 дней).
+      description: Данные для создания/идентификации гостя.
+    GuestIdCookie:
+      type: object
+      description: Идентификация гостя происходит по httpOnly cookie `guest_id`.
+    GuestProfile:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          description: Идентификатор гостя (совпадает с cookie `guest_id`).
+        name:
+          type: string
+          description: Имя гостя.
+        guestPhone:
+          type: string
+          description: Телефон гостя.
+        guestEmail:
+          type: string
+          format: email
+          description: Email гостя.
+      description: Профиль гостя, идентифицируемый по httpOnly cookie `guest_id`.
+    GuestUnknownError:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          enum:
+            - GUEST_UNKNOWN
+        message:
+          type: string
+    LoginThrottledError:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          enum:
+            - LOGIN_ATTEMPTS_EXCEEDED
+        message:
+          type: string
     NotFoundError:
       type: object
       required:
@@ -403,6 +641,22 @@ components:
             - EVENT_TYPE_NOT_FOUND
         message:
           type: string
+    OwnerLogin:
+      type: object
+      required:
+        - login
+        - password
+      properties:
+        login:
+          type: string
+          description: Логин владельца, задан статически при старте сервера.
+        password:
+          type: string
+          description: Пароль владельца, задан статически при старте сервера.
+      description: Данные для входа владельца.
+    OwnerSessionCookie:
+      type: object
+      description: Сессия владельца выдаётся в httpOnly cookie `owner_session`.
     Slot:
       type: object
       required:
@@ -452,6 +706,19 @@ components:
           format: time
           description: Конец интервала, формат HH:mm. Должен быть больше начала.
       description: Интервал рабочего времени внутри дня, например 09:00–13:00.
+    UnauthorizedError:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          enum:
+            - INVALID_CREDENTIALS
+            - NO_OWNER_SESSION
+        message:
+          type: string
     WeeklySchedule:
       type: object
       required:

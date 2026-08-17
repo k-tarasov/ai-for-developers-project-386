@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from 'react-router'
 
+import { OwnerAuthProvider } from '@/auth/owner-session-provider'
 import { router } from '@/app/router'
 
 const queryClient = new QueryClient({
@@ -15,7 +16,9 @@ const queryClient = new QueryClient({
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <OwnerAuthProvider>
+        <RouterProvider router={router} />
+      </OwnerAuthProvider>
     </QueryClientProvider>
   )
 }

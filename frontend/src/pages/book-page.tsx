@@ -6,12 +6,14 @@ import { Link, useParams } from 'react-router'
 import { z } from 'zod'
 
 import { ApiError, errorMessage } from '@/api/errors'
-import { queryKeys, useCreateBooking, useEventType, useSlots } from '@/api/queries'
+import { queryKeys, useCreateBooking, useEventType, useGuest, useSlots } from '@/api/queries'
 import type { Booking, Slot } from '@/api/queries'
 import { QueryError } from '@/components/query-error'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Calendar } from '@/components/ui/calendar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ru } from 'react-day-picker/locale'
 import {
   Form,
   FormControl,
@@ -20,37 +22,21 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form'
-import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
-import { formatUtcDate, formatUtcDateTime, formatUtcTime, groupSlotsByDay } from '@/lib/datetime'
+import { formatUtcDate, formatUtcDateTime, formatUtcTime, groupSlotsByDay, utcDayKey } from '@/lib/datetime'
 
-const bookingFormSchema = z
-  .object({
-    guestName: z.string().min(1, 'Укажите имя'),
-    guestPhone: z.string(),
-    guestEmail: z.string(),
-    guestComment: z.string(),
-  })
-  .superRefine((values, ctx) => {
-    const hasPhone = values.guestPhone.trim().length > 0
-    const hasEmail = values.guestEmail.trim().length > 0
-    if (!hasPhone && !hasEmail) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['guestPhone'],
-        message: 'Укажите хотя бы один контакт: телефон или email',
-      })
-      return
-    }
-    if (hasEmail && !z.string().email().safeParse(values.guestEmail.trim()).success) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['guestEmail'],
-        message: 'Некорректный email',
-      })
-    }
-  })
+/** Ключ дня (YYYY-MM-DD) из локальных компонентов Date — совпадает с UTC-ключом слота. */
+function localDayKey(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const bookingFormSchema = z.object({
+  guestComment: z.string(),
+})
 
 type BookingFormValues = z.infer<typeof bookingFormSchema>
 
@@ -87,14 +73,16 @@ export function BookPage() {
   const eventTypeQuery = useEventType(eventTypeId)
   const slotsQuery = useSlots(eventTypeId)
   const createBooking = useCreateBooking()
+  const guestQuery = useGuest()
   const queryClient = useQueryClient()
 
   const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null)
   const [created, setCreated] = useState<Booking | null>(null)
+  const [selectedDay, setSelectedDay] = useState<Date | undefined>(undefined)
 
   const form = useForm<BookingFormValues>({
     resolver: zodResolver(bookingFormSchema),
-    defaultValues: { guestName: '', guestPhone: '', guestEmail: '', guestComment: '' },
+    defaultValues: { guestComment: '' },
   })
 
   const isNotFound =
@@ -135,19 +123,48 @@ export function BookPage() {
   const eventType = eventTypeQuery.data
   const { slots, windowStartsOn, windowEndsOn } = slotsQuery.data
 
+  const windowStartsOnDate = new Date(`${windowStartsOn}T00:00:00`)
+  const windowEndsOnDate = new Date(`${windowEndsOn}T00:00:00`)
+  const availableDays = new Set(groupSlotsByDay(slots).map(([key]) => key))
+  const firstAvailableDay = (() => {
+    const first = groupSlotsByDay(slots).at(0)?.[0]
+    return first ? new Date(`${first}T00:00:00`) : undefined
+  })()
+  const effectiveSelectedDay = selectedDay ?? firstAvailableDay
+  const daySlots = slots
+    .filter(
+      (slot) =>
+        effectiveSelectedDay !== undefined &&
+        utcDayKey(slot.startsAt) === localDayKey(effectiveSelectedDay),
+    )
+    .sort((a, b) => a.startsAt.localeCompare(b.startsAt))
+  const selectedDayLabel = effectiveSelectedDay
+    ? formatUtcDate(`${localDayKey(effectiveSelectedDay)}T00:00:00Z`)
+    : ''
+
+  function handleDaySelect(day: Date | undefined) {
+    if (!day) return
+    setSelectedDay(day)
+    const key = localDayKey(day)
+    if (selectedSlot && utcDayKey(selectedSlot.startsAt) !== key) {
+      setSelectedSlot(null)
+    }
+  }
+
   if (created) {
     return <Confirmation booking={created} onReset={() => { setCreated(null); setSelectedSlot(null); form.reset(); createBooking.reset() }} />
   }
 
   function handleSubmit(values: BookingFormValues) {
-    if (!selectedSlot) return
+    if (!selectedSlot || !guestQuery.data) return
+    const profile = guestQuery.data
     createBooking.mutate(
       {
         eventTypeId,
         startsAt: selectedSlot.startsAt,
-        guestName: values.guestName.trim(),
-        guestPhone: values.guestPhone.trim() || undefined,
-        guestEmail: values.guestEmail.trim() || undefined,
+        guestName: profile.name,
+        guestPhone: profile.guestPhone || undefined,
+        guestEmail: profile.guestEmail || undefined,
         guestComment: values.guestComment.trim() || undefined,
       },
       {
@@ -166,115 +183,128 @@ export function BookPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">{eventType.title}</h1>
-        <p className="text-muted-foreground">
-          {eventType.durationMinutes} мин · Окно записи: {windowStartsOn} – {windowEndsOn} (UTC)
-        </p>
+        <p className="text-muted-foreground">{eventType.durationMinutes} мин</p>
       </div>
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-medium">Свободное время (UTC)</h2>
-        {slots.length === 0 ? (
-          <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
-            В ближайшие 14 дней свободного времени нет.
-          </div>
-        ) : (
+      {slots.length === 0 ? (
+        <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
+          В ближайшие 14 дней свободного времени нет.
+        </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-3">
           <div className="space-y-4">
-            {groupSlotsByDay(slots).map(([day, daySlots]) => (
-              <div key={day}>
-                <h3 className="mb-2 text-sm font-medium text-muted-foreground">
-                  {formatUtcDate(daySlots[0].startsAt)}
-                </h3>
-                <div className="flex flex-wrap gap-2">
-                  {daySlots.map((slot) => (
-                    <Button
-                      key={slot.startsAt}
-                      variant={selectedSlot?.startsAt === slot.startsAt ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setSelectedSlot(slot)}
-                    >
-                      {formatUtcTime(slot.startsAt)}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+            <Card>
+              <CardHeader>
+                <CardTitle>{eventType.title}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <p>{eventType.durationMinutes} мин</p>
+                <p className="text-muted-foreground">
+                  Окно записи: {windowStartsOn} – {windowEndsOn} (UTC)
+                </p>
+              </CardContent>
+            </Card>
 
-      {slots.length > 0 && (
-        <section className="space-y-3">
-          <h2 className="text-lg font-medium">Ваши данные</h2>
-          {createBooking.isError && (
-            <Alert variant="destructive">
-              <AlertTitle>Не удалось создать запись</AlertTitle>
-              <AlertDescription>{errorMessage(createBooking.error)}</AlertDescription>
-            </Alert>
-          )}
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleSubmit)} className="max-w-md space-y-4">
-              <FormField
-                control={form.control}
-                name="guestName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Имя</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="guestPhone"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Телефон</FormLabel>
-                    <FormControl>
-                      <Input type="tel" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="guestEmail"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email</FormLabel>
-                    <FormControl>
-                      <Input type="email" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="guestComment"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Комментарий (необязательно)</FormLabel>
-                    <FormControl>
-                      <Textarea {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <Button type="submit" disabled={!selectedSlot || createBooking.isPending}>
-                {createBooking.isPending
-                  ? 'Записываем…'
-                  : selectedSlot
-                    ? `Записаться на ${formatUtcDateTime(selectedSlot.startsAt)} UTC`
-                    : 'Сначала выберите время'}
-              </Button>
-            </form>
-          </Form>
-        </section>
+             <section className="space-y-3">
+               <h2 className="text-lg font-medium">Ваши данные</h2>
+               {createBooking.isError && (
+                 <Alert variant="destructive">
+                   <AlertTitle>Не удалось создать запись</AlertTitle>
+                   <AlertDescription>{errorMessage(createBooking.error)}</AlertDescription>
+                 </Alert>
+               )}
+               {guestQuery.isPending ? (
+                 <Skeleton className="h-24 w-full" />
+               ) : guestQuery.data ? (
+                 <div className="space-y-4">
+                   <div className="rounded-lg border p-4 text-sm">
+                     <p className="font-medium">{guestQuery.data.name}</p>
+                     {guestQuery.data.guestPhone && (
+                       <p className="text-muted-foreground">{guestQuery.data.guestPhone}</p>
+                     )}
+                     {guestQuery.data.guestEmail && (
+                       <p className="text-muted-foreground">{guestQuery.data.guestEmail}</p>
+                     )}
+                   </div>
+                   <Form {...form}>
+                     <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+                       <FormField
+                         control={form.control}
+                         name="guestComment"
+                         render={({ field }) => (
+                           <FormItem>
+                             <FormLabel>Комментарий (необязательно)</FormLabel>
+                             <FormControl>
+                               <Textarea {...field} />
+                             </FormControl>
+                             <FormMessage />
+                           </FormItem>
+                         )}
+                       />
+                       <Button type="submit" disabled={!selectedSlot || createBooking.isPending}>
+                         {createBooking.isPending
+                           ? 'Записываем…'
+                           : selectedSlot
+                             ? `Записаться на ${formatUtcDateTime(selectedSlot.startsAt)} UTC`
+                             : 'Сначала выберите время'}
+                       </Button>
+                     </form>
+                   </Form>
+                 </div>
+               ) : (
+                 <Alert>
+                   <AlertTitle>Нужны ваши данные</AlertTitle>
+                   <AlertDescription>
+                     Заполните профиль на{' '}
+                     <Link to="/" className="underline">
+                       главной странице
+                     </Link>
+                     , чтобы записаться.
+                   </AlertDescription>
+                 </Alert>
+               )}
+             </section>
+          </div>
+
+          <div className="flex justify-center">
+            <Calendar
+              mode="single"
+              selected={effectiveSelectedDay}
+              onSelect={handleDaySelect}
+              defaultMonth={windowStartsOnDate}
+              captionLayout="dropdown"
+              locale={ru}
+              classNames={{ root: 'w-full' }}
+              disabled={[
+                { before: windowStartsOnDate },
+                { after: windowEndsOnDate },
+                (date: Date) => !availableDays.has(localDayKey(date)),
+              ]}
+            />
+          </div>
+
+          <div className="flex min-h-0 flex-col">
+            <h2 className="mb-2 shrink-0 text-lg font-medium">
+              {selectedDayLabel} (UTC)
+            </h2>
+            <div className="max-h-[70vh] space-y-2 overflow-y-auto pr-1">
+              {daySlots.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Нет свободных слотов.</p>
+              ) : (
+                daySlots.map((slot) => (
+                  <Button
+                    key={slot.startsAt}
+                    variant={selectedSlot?.startsAt === slot.startsAt ? 'default' : 'outline'}
+                    className="w-full"
+                    onClick={() => setSelectedSlot(slot)}
+                  >
+                    {formatUtcTime(slot.startsAt)}
+                  </Button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

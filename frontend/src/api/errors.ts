@@ -3,7 +3,16 @@ import type { components } from './schema'
 export type BadRequestCode = components['schemas']['BadRequestError']['code']
 export type NotFoundCode = components['schemas']['NotFoundError']['code']
 export type ConflictCode = components['schemas']['ConflictError']['code']
-export type ApiErrorCode = BadRequestCode | NotFoundCode | ConflictCode
+export type UnauthorizedCode = components['schemas']['UnauthorizedError']['code']
+export type LoginThrottledCode = components['schemas']['LoginThrottledError']['code']
+export type GuestUnknownCode = components['schemas']['GuestUnknownError']['code']
+export type ApiErrorCode =
+  | BadRequestCode
+  | NotFoundCode
+  | ConflictCode
+  | UnauthorizedCode
+  | LoginThrottledCode
+  | GuestUnknownCode
 
 /** Все коды ошибок, зафиксированные в контракте API. */
 const KNOWN_CODES: readonly ApiErrorCode[] = [
@@ -15,6 +24,10 @@ const KNOWN_CODES: readonly ApiErrorCode[] = [
   'EVENT_TYPE_NOT_FOUND',
   'DUPLICATE_EVENT_TYPE_ID',
   'SLOT_BUSY',
+  'INVALID_CREDENTIALS',
+  'NO_OWNER_SESSION',
+  'LOGIN_ATTEMPTS_EXCEEDED',
+  'GUEST_UNKNOWN',
 ]
 
 /** Типизированная ошибка API: HTTP-статус + код из контракта (null, если код неизвестен). */
@@ -83,6 +96,10 @@ const FIXED_MESSAGES: Partial<Record<ApiErrorCode, string>> = {
   EVENT_TYPE_NOT_FOUND: 'Тип события не найден или больше недоступен.',
   DUPLICATE_EVENT_TYPE_ID: 'Тип события с таким идентификатором уже существует.',
   SLOT_BUSY: 'Это время уже занято. Выберите другой слот.',
+  INVALID_CREDENTIALS: 'Неверный логин или пароль.',
+  NO_OWNER_SESSION: 'Сессия владельца не найдена. Войдите в админку заново.',
+  LOGIN_ATTEMPTS_EXCEEDED: 'Слишком много попыток входа. Попробуйте позже.',
+  GUEST_UNKNOWN: 'Профиль гостя не найден.',
 }
 
 /** Пользовательское сообщение об ошибке по коду из контракта. */
