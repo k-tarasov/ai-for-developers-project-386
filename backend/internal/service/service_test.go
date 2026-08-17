@@ -1,10 +1,13 @@
 package service
 
 import (
+	"sync"
 	"testing"
 	"time"
 
 	"bookingapi/api"
+	"bookingapi/internal/store"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 var mondayNoon = time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC) // 2024-01-01 is a Monday
@@ -100,5 +103,65 @@ func TestIsWithinSchedule(t *testing.T) {
 	start = time.Date(2024, 1, 1, 9, 0, 0, 0, time.UTC)
 	if err := IsWithinSchedule(et(30, nil), sched(iv), start, 30*time.Minute); err != nil {
 		t.Fatalf("expected within schedule, got %v", err)
+	}
+}
+
+// TestConcurrentSlotsAndCreate mirrors the real request path: each goroutine
+// reads free slots via ComputeSlots (a snapshot of existing bookings) and then
+// attempts to book the same slot. Even though all goroutines observe the slot
+// as free, the store's atomic CreateBooking must admit exactly one.
+func TestConcurrentSlotsAndCreate(t *testing.T) {
+	st := store.New(5)
+	ws := api.WeeklySchedule{
+		Mon: []api.TimeInterval{{Start: "09:00", End: "12:00"}},
+		Tue: []api.TimeInterval{{Start: "09:00", End: "12:00"}},
+		Wed: []api.TimeInterval{{Start: "09:00", End: "12:00"}},
+		Thu: []api.TimeInterval{{Start: "09:00", End: "12:00"}},
+		Fri: []api.TimeInterval{{Start: "09:00", End: "12:00"}},
+		Sat: []api.TimeInterval{{Start: "09:00", End: "12:00"}},
+		Sun: []api.TimeInterval{{Start: "09:00", End: "12:00"}},
+	}
+	eventType := et(30, nil)
+	target := time.Date(2024, 1, 1, 9, 0, 0, 0, time.UTC) // Monday, in schedule, 15-min aligned
+
+	const n = 20
+	var wg sync.WaitGroup
+	created := make([]bool, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			// snapshot of bookings exactly as the handler would feed ComputeSlots
+			snapshot := st.BookingsAll()
+			resp := ComputeSlots(eventType, ws, snapshot, target)
+			found := false
+			for _, s := range resp.Slots {
+				if s.StartsAt.Equal(target) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return
+			}
+			dur := 30 * time.Minute
+			b := api.Booking{
+				Id:       openapi_types.UUID([16]byte{byte(idx)}),
+				StartsAt: target,
+				EndsAt:   target.Add(dur),
+			}
+			created[idx] = st.CreateBooking(b) == nil
+		}(i)
+	}
+	wg.Wait()
+
+	ok := 0
+	for _, c := range created {
+		if c {
+			ok++
+		}
+	}
+	if ok != 1 {
+		t.Fatalf("expected exactly 1 successful booking under concurrency, got %d", ok)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -186,6 +187,53 @@ func TestBookingValidation(t *testing.T) {
 	resp, _ = doReq(t, newClient(), "GET", srv.URL+"/api/bookings", nil)
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("expected 401 for bookings list, got %d", resp.StatusCode)
+	}
+}
+
+func TestConcurrentBookingSameSlot(t *testing.T) {
+	srv, _ := newTestServer(t, 5)
+	defer srv.Close()
+	client := newClient()
+	doReq(t, client, "POST", srv.URL+"/api/auth/login", api.OwnerLogin{Login: "admin", Password: "secret"})
+	doReq(t, client, "POST", srv.URL+"/api/event-types",
+		api.EventType{Id: "ok", Title: "t", Description: "d", DurationMinutes: 30})
+	full := []api.TimeInterval{{Start: "09:00", End: "12:00"}}
+	doReq(t, client, "PUT", srv.URL+"/api/schedule",
+		api.WeeklySchedule{Mon: full, Tue: full, Wed: full, Thu: full, Fri: full, Sat: full, Sun: full})
+
+	base := time.Now().UTC().Truncate(24 * time.Hour).Add(48 * time.Hour).Add(9 * time.Hour)
+	body := api.BookingCreate{EventTypeId: "ok", StartsAt: base, GuestName: "a", GuestEmail: ptrEmail("a@b.com")}
+
+	const n = 20
+	codes := make(chan int, n)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			resp, _ := doReq(t, newClient(), "POST", srv.URL+"/api/bookings", body)
+			codes <- resp.StatusCode
+		}()
+	}
+	wg.Wait()
+	close(codes)
+
+	created, busy := 0, 0
+	for c := range codes {
+		switch c {
+		case http.StatusCreated:
+			created++
+		case http.StatusConflict:
+			busy++
+		default:
+			t.Fatalf("unexpected status %d for concurrent booking", c)
+		}
+	}
+	if created != 1 {
+		t.Fatalf("expected exactly 1 successful booking, got %d", created)
+	}
+	if busy != n-1 {
+		t.Fatalf("expected %d busy responses, got %d", n-1, busy)
 	}
 }
 
