@@ -1,0 +1,26 @@
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      backend_released: ${{ steps.release.outputs['backend--release_created'] }}
+      backend_tag_name: ${{ steps.release.outputs['backend--tag_name'] }}
+      frontend_released: ${{ steps.release.outputs['frontend--release_created'] }}
+      frontend_tag_name: ${{ steps.release.outputs['frontend--tag_name'] }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
