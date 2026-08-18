@@ -4,18 +4,23 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
 )
 
 type Config struct {
-	OwnerLogin       string `envconfig:"OWNER_LOGIN" required:"true"`
-	OwnerPassword    string `envconfig:"OWNER_PASSWORD" required:"true"`
+	OwnerLogin       string `envconfig:"OWNER_LOGIN" default:"admin" required:"true"`
+	OwnerPassword    string `envconfig:"OWNER_PASSWORD" default:"admin" required:"true"`
 	ServerAddr       string `envconfig:"SERVER_ADDR" default:":8080"`
 	LogLevel         string `envconfig:"LOG_LEVEL" default:"info"`
 	LoginMaxAttempts int    `envconfig:"LOGIN_MAX_ATTEMPTS" default:"5"`
 }
 
 func Load() (*Config, error) {
+	if err := godotenv.Load(); err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+
 	var cfg Config
 	if err := envconfig.Process("", &cfg); err != nil {
 		return nil, err
