@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.0](https://github.com/k-tarasov/ai-for-developers-project-386/compare/v0.2.0...v0.3.0) (2026-08-18)
+
+
+### Features
+
+* **backend:** add /healthz health check endpoint ([6b698d3](https://github.com/k-tarasov/ai-for-developers-project-386/commit/6b698d39d747e6c18d81d5a8d08f4b2b1834cc99))
+* **backend:** serve SPA static files from ./build ([18870f9](https://github.com/k-tarasov/ai-for-developers-project-386/commit/18870f97da8152f876108ed22b5352feaa15f985))
+* **backend:** support PORT env variable ([64f5170](https://github.com/k-tarasov/ai-for-developers-project-386/commit/64f517000974f41c1f0970a3378e8d8ec0b6f0a9))
+
 ## [0.2.0](https://github.com/k-tarasov/ai-for-developers-project-386/compare/v0.1.0...v0.2.0) (2026-08-18)
 
 
