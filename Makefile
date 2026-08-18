@@ -1,4 +1,4 @@
-.PHONY: lint test build dev dev-mock format spec be-generate be-build be-run be-test be-lint
+.PHONY: lint test build dev dev-mock format e2e spec be-generate be-build be-run be-test be-lint
 
 SPEC := spec/tsp-output/@typespec/openapi3/openapi.yaml
 BACKEND := backend
@@ -23,6 +23,9 @@ dev-mock:
 
 format:
 	cd frontend && npm run format
+
+e2e:
+	cd frontend && npm run e2e
 
 # --- Контракт API ---
 

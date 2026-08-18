@@ -13,7 +13,8 @@
     "mock:api": "prism mock ../spec/tsp-output/@typespec/openapi3/openapi.yaml",
     "dev:mock": "concurrently -n prism,vite -c blue,green \"npm run mock:api\" \"vite --mode mock\"",
     "test": "vitest run",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
@@ -40,6 +41,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.62.1",
     "@stoplight/prism-cli": "^5.16.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
