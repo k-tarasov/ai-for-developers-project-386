@@ -1,14 +1,12 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
-  "packages": {
-    "backend": {
-      "component": "backend",
-      "release-type": "go"
-    },
-    "frontend": {
-      "component": "frontend",
-      "release-type": "node"
+  "release-type": "simple",
+  "include-v-in-tag": true,
+  "extra-files": [
+    {
+      "type": "json",
+      "path": "frontend/package.json",
+      "jsonpath": "$.version"
     }
-  },
-  "separate-pull-requests": true
+  ]
 }
