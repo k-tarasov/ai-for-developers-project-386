@@ -20,8 +20,33 @@ type Store struct {
 	loginMaxAttempts int
 }
 
+// defaultAvailability — расписание 09:00–21:00 на каждый день недели.
+func defaultAvailability() *api.WeeklySchedule {
+	iv := []api.TimeInterval{{Start: "09:00", End: "21:00"}}
+	return &api.WeeklySchedule{
+		Mon: iv, Tue: iv, Wed: iv, Thu: iv, Fri: iv, Sat: iv, Sun: iv,
+	}
+}
+
+var predefinedEventTypes = []api.EventType{
+	{
+		Id:               "15-min",
+		Title:            "Встреча 15 минут",
+		Description:      "Короткая встреча на 15 минут.",
+		DurationMinutes:  15,
+		Availability:     defaultAvailability(),
+	},
+	{
+		Id:               "30-min",
+		Title:            "Встреча 30 минут",
+		Description:      "Стандартная встреча на 30 минут.",
+		DurationMinutes:  30,
+		Availability:     defaultAvailability(),
+	},
+}
+
 func New(loginMaxAttempts int) *Store {
-	return &Store{
+	s := &Store{
 		eventTypes:       make(map[string]api.EventType),
 		schedule:         api.WeeklySchedule{},
 		bookings:         make(map[string]api.Booking),
@@ -29,6 +54,10 @@ func New(loginMaxAttempts int) *Store {
 		ownerSessions:    make(map[string]bool),
 		loginMaxAttempts: loginMaxAttempts,
 	}
+	for _, et := range predefinedEventTypes {
+		s.eventTypes[et.Id] = et
+	}
+	return s
 }
 
 // --- Event types ---
