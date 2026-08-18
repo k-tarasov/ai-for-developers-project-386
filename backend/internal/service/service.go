@@ -69,7 +69,8 @@ func ComputeSlots(et api.EventType, schedule api.WeeklySchedule, bookings []api.
 	windowStart := WindowStart(now)
 	dur := time.Duration(et.DurationMinutes) * time.Minute
 
-	var slots []api.Slot
+	// Пустой срез, а не nil: в JSON должен уходить [], иначе клиент получает null.
+	slots := make([]api.Slot, 0)
 	for d := 0; d <= 13; d++ {
 		day := windowStart.AddDate(0, 0, d)
 		intervals := intervalsForWeekday(schedule, day.Weekday())
