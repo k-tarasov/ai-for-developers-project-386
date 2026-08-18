@@ -54,6 +54,12 @@ func New(s *store.Store, cfg *config.Config, l Logger) *Handler {
 	return &Handler{store: s, cfg: cfg, logger: l}
 }
 
+func (h *Handler) logErr(msg string, err *errors.Error) {
+	if err != nil {
+		h.logger.Error(msg, "code", string(err.Code), "message", err.Message)
+	}
+}
+
 func buildCookie(name, value string, maxAge int) string {
 	if maxAge > 0 {
 		return fmt.Sprintf("%s=%s; HttpOnly; Path=/; Max-Age=%d", name, value, maxAge)
@@ -100,11 +106,13 @@ func (h *Handler) AuthLogin(ctx context.Context, request api.AuthLoginRequestObj
 	if body.Login != h.cfg.OwnerLogin || body.Password != h.cfg.OwnerPassword {
 		_, exceeded := h.store.RegisterFailedAttempt()
 		if exceeded {
+			h.logErr("auth login", errors.NewTooMany(errors.LoginAttemptsExceeded, "login attempts exceeded"))
 			return api.AuthLogin429JSONResponse{
 				Code:    api.LoginThrottledErrorCode(errors.LoginAttemptsExceeded),
 				Message: "login attempts exceeded",
 			}, nil
 		}
+		h.logErr("auth login", errors.NewUnauthorized(errors.InvalidCredentials, "invalid credentials"))
 		return api.AuthLogin401JSONResponse{
 			Code:    api.UnauthorizedErrorCode(errors.InvalidCredentials),
 			Message: "invalid credentials",
@@ -126,6 +134,7 @@ func (h *Handler) AuthLogin(ctx context.Context, request api.AuthLoginRequestObj
 
 func (h *Handler) BookingsList(ctx context.Context, request api.BookingsListRequestObject) (api.BookingsListResponseObject, error) {
 	if err := h.requireOwner(ctx); err != nil {
+		h.logErr("bookings list", err)
 		return api.BookingsList401JSONResponse{
 			Code:    api.UnauthorizedErrorCode(err.Code),
 			Message: err.Message,
@@ -139,12 +148,14 @@ func (h *Handler) BookingsCreate(ctx context.Context, request api.BookingsCreate
 	body := request.Body
 	et, ok := h.store.EventTypeGet(body.EventTypeId)
 	if !ok {
+		h.logErr("booking create", errors.NewNotFound(errors.EventTypeNotFound, "event type not found"))
 		return api.BookingsCreate404JSONResponse{
 			Code:    api.NotFoundErrorCode(errors.EventTypeNotFound),
 			Message: "event type not found",
 		}, nil
 	}
 	if body.GuestPhone == nil && body.GuestEmail == nil {
+		h.logErr("booking create", errors.NewBadRequest(errors.ContactRequired, "guest phone or email required"))
 		return api.BookingsCreate400JSONResponse{
 			Code:    api.BadRequestErrorCode(errors.ContactRequired),
 			Message: "guest phone or email required",
@@ -153,6 +164,7 @@ func (h *Handler) BookingsCreate(ctx context.Context, request api.BookingsCreate
 	startsAt := body.StartsAt.UTC()
 	windowStart := service.WindowStart(time.Now())
 	if err := service.ValidateAlignmentAndWindow(startsAt, windowStart); err != nil {
+		h.logErr("booking create", err)
 		return api.BookingsCreate400JSONResponse{
 			Code:    api.BadRequestErrorCode(err.Code),
 			Message: err.Message,
@@ -166,6 +178,7 @@ func (h *Handler) BookingsCreate(ctx context.Context, request api.BookingsCreate
 	}
 	dur := time.Duration(et.DurationMinutes) * time.Minute
 	if err := service.IsWithinSchedule(et, sched, startsAt, dur); err != nil {
+		h.logErr("booking create", err)
 		return api.BookingsCreate400JSONResponse{
 			Code:    api.BadRequestErrorCode(err.Code),
 			Message: err.Message,
@@ -189,6 +202,7 @@ func (h *Handler) BookingsCreate(ctx context.Context, request api.BookingsCreate
 		CreatedAt:    now,
 	}
 	if err := h.store.CreateBooking(b); err != nil {
+		h.logErr("booking create", err)
 		return api.BookingsCreate409JSONResponse{
 			Code:    api.ConflictErrorCode(errors.SlotBusy),
 			Message: err.Message,
@@ -206,6 +220,7 @@ func (h *Handler) EventTypesList(ctx context.Context, request api.EventTypesList
 func (h *Handler) EventTypesGet(ctx context.Context, request api.EventTypesGetRequestObject) (api.EventTypesGetResponseObject, error) {
 	et, ok := h.store.EventTypeGet(request.EventTypeId)
 	if !ok {
+		h.logErr("event type get", errors.NewNotFound(errors.EventTypeNotFound, "event type not found"))
 		return api.EventTypesGet404JSONResponse{
 			Code:    api.NotFoundErrorCode(errors.EventTypeNotFound),
 			Message: "event type not found",
@@ -216,6 +231,7 @@ func (h *Handler) EventTypesGet(ctx context.Context, request api.EventTypesGetRe
 
 func (h *Handler) EventTypesCreate(ctx context.Context, request api.EventTypesCreateRequestObject) (api.EventTypesCreateResponseObject, error) {
 	if err := h.requireOwner(ctx); err != nil {
+		h.logErr("event type create", err)
 		return api.EventTypesCreate401JSONResponse{
 			Code:    api.UnauthorizedErrorCode(err.Code),
 			Message: err.Message,
@@ -223,18 +239,21 @@ func (h *Handler) EventTypesCreate(ctx context.Context, request api.EventTypesCr
 	}
 	body := request.Body
 	if !slugPattern.MatchString(body.Id) || len(body.Id) > 63 {
+		h.logErr("event type create", errors.NewBadRequest(errors.ValidationError, "invalid event type id"))
 		return api.EventTypesCreate400JSONResponse{
 			Code:    api.BadRequestErrorCode(errors.ValidationError),
 			Message: "invalid event type id",
 		}, nil
 	}
 	if body.DurationMinutes < 15 || body.DurationMinutes > 180 || body.DurationMinutes%15 != 0 {
+		h.logErr("event type create", errors.NewBadRequest(errors.ValidationError, "durationMinutes must be in [15,180] and a multiple of 15"))
 		return api.EventTypesCreate400JSONResponse{
 			Code:    api.BadRequestErrorCode(errors.ValidationError),
 			Message: "durationMinutes must be in [15,180] and a multiple of 15",
 		}, nil
 	}
 	if err := h.store.EventTypeCreate(*body); err != nil {
+		h.logErr("event type create", err)
 		return api.EventTypesCreate409JSONResponse{
 			Code:    api.ConflictErrorCode(errors.DuplicateEventID),
 			Message: err.Message,
@@ -245,6 +264,7 @@ func (h *Handler) EventTypesCreate(ctx context.Context, request api.EventTypesCr
 
 func (h *Handler) EventTypesUpdate(ctx context.Context, request api.EventTypesUpdateRequestObject) (api.EventTypesUpdateResponseObject, error) {
 	if err := h.requireOwner(ctx); err != nil {
+		h.logErr("event type update", err)
 		return api.EventTypesUpdate401JSONResponse{
 			Code:    api.UnauthorizedErrorCode(err.Code),
 			Message: err.Message,
@@ -254,6 +274,7 @@ func (h *Handler) EventTypesUpdate(ctx context.Context, request api.EventTypesUp
 	body.Id = request.EventTypeId
 	et, ok := h.store.EventTypeUpdate(request.EventTypeId, *body)
 	if !ok {
+		h.logErr("event type update", errors.NewNotFound(errors.EventTypeNotFound, "event type not found"))
 		return api.EventTypesUpdate404JSONResponse{
 			Code:    api.NotFoundErrorCode(errors.EventTypeNotFound),
 			Message: "event type not found",
@@ -264,12 +285,14 @@ func (h *Handler) EventTypesUpdate(ctx context.Context, request api.EventTypesUp
 
 func (h *Handler) EventTypesDelete(ctx context.Context, request api.EventTypesDeleteRequestObject) (api.EventTypesDeleteResponseObject, error) {
 	if err := h.requireOwner(ctx); err != nil {
+		h.logErr("event type delete", err)
 		return api.EventTypesDelete401JSONResponse{
 			Code:    api.UnauthorizedErrorCode(err.Code),
 			Message: err.Message,
 		}, nil
 	}
 	if !h.store.EventTypeDelete(request.EventTypeId) {
+		h.logErr("event type delete", errors.NewNotFound(errors.EventTypeNotFound, "event type not found"))
 		return api.EventTypesDelete404JSONResponse{
 			Code:    api.NotFoundErrorCode(errors.EventTypeNotFound),
 			Message: "event type not found",
@@ -281,6 +304,7 @@ func (h *Handler) EventTypesDelete(ctx context.Context, request api.EventTypesDe
 func (h *Handler) EventTypesListSlots(ctx context.Context, request api.EventTypesListSlotsRequestObject) (api.EventTypesListSlotsResponseObject, error) {
 	et, ok := h.store.EventTypeGet(request.EventTypeId)
 	if !ok {
+		h.logErr("event type slots", errors.NewNotFound(errors.EventTypeNotFound, "event type not found"))
 		return api.EventTypesListSlots404JSONResponse{
 			Code:    api.NotFoundErrorCode(errors.EventTypeNotFound),
 			Message: "event type not found",
@@ -300,6 +324,7 @@ func (h *Handler) EventTypesListSlots(ctx context.Context, request api.EventType
 
 func (h *Handler) ScheduleGet(ctx context.Context, request api.ScheduleGetRequestObject) (api.ScheduleGetResponseObject, error) {
 	if err := h.requireOwner(ctx); err != nil {
+		h.logErr("schedule get", err)
 		return api.ScheduleGet401JSONResponse{
 			Code:    api.UnauthorizedErrorCode(err.Code),
 			Message: err.Message,
@@ -310,6 +335,7 @@ func (h *Handler) ScheduleGet(ctx context.Context, request api.ScheduleGetReques
 
 func (h *Handler) ScheduleUpdate(ctx context.Context, request api.ScheduleUpdateRequestObject) (api.ScheduleUpdateResponseObject, error) {
 	if err := h.requireOwner(ctx); err != nil {
+		h.logErr("schedule update", err)
 		return api.ScheduleUpdate401JSONResponse{
 			Code:    api.UnauthorizedErrorCode(err.Code),
 			Message: err.Message,
@@ -317,6 +343,7 @@ func (h *Handler) ScheduleUpdate(ctx context.Context, request api.ScheduleUpdate
 	}
 	body := request.Body
 	if !validSchedule(*body) {
+		h.logErr("schedule update", errors.NewBadRequest(errors.ValidationError, "invalid schedule intervals"))
 		return api.ScheduleUpdate400JSONResponse{
 			Code:    api.BadRequestErrorCode(errors.ValidationError),
 			Message: "invalid schedule intervals",
@@ -331,6 +358,7 @@ func (h *Handler) ScheduleUpdate(ctx context.Context, request api.ScheduleUpdate
 func (h *Handler) GuestGet(ctx context.Context, request api.GuestGetRequestObject) (api.GuestGetResponseObject, error) {
 	id := guestIDFromCtx(ctx)
 	if id == "" {
+		h.logErr("guest get", errors.NewNotFound(errors.GuestUnknown, "guest unknown"))
 		return api.GuestGet404JSONResponse{
 			Code:    api.GuestUnknownErrorCode(errors.GuestUnknown),
 			Message: "guest unknown",
@@ -338,6 +366,7 @@ func (h *Handler) GuestGet(ctx context.Context, request api.GuestGetRequestObjec
 	}
 	gp, ok := h.store.GuestGet(id)
 	if !ok {
+		h.logErr("guest get", errors.NewNotFound(errors.GuestUnknown, "guest unknown"))
 		return api.GuestGet404JSONResponse{
 			Code:    api.GuestUnknownErrorCode(errors.GuestUnknown),
 			Message: "guest unknown",
@@ -349,6 +378,7 @@ func (h *Handler) GuestGet(ctx context.Context, request api.GuestGetRequestObjec
 func (h *Handler) GuestCreate(ctx context.Context, request api.GuestCreateRequestObject) (api.GuestCreateResponseObject, error) {
 	body := request.Body
 	if body.GuestPhone == nil && body.GuestEmail == nil {
+		h.logErr("guest create", errors.NewBadRequest(errors.ContactRequired, "guest phone or email required"))
 		return api.GuestCreate400JSONResponse{
 			Code:    api.BadRequestErrorCode(errors.ContactRequired),
 			Message: "guest phone or email required",
@@ -378,12 +408,14 @@ func (h *Handler) GuestCreate(ctx context.Context, request api.GuestCreateReques
 func (h *Handler) GuestUpdate(ctx context.Context, request api.GuestUpdateRequestObject) (api.GuestUpdateResponseObject, error) {
 	id := guestIDFromCtx(ctx)
 	if id == "" {
+		h.logErr("guest update", errors.NewNotFound(errors.GuestUnknown, "guest unknown"))
 		return api.GuestUpdate404JSONResponse{
 			Code:    api.GuestUnknownErrorCode(errors.GuestUnknown),
 			Message: "guest unknown",
 		}, nil
 	}
 	if _, ok := h.store.GuestGet(id); !ok {
+		h.logErr("guest update", errors.NewNotFound(errors.GuestUnknown, "guest unknown"))
 		return api.GuestUpdate404JSONResponse{
 			Code:    api.GuestUnknownErrorCode(errors.GuestUnknown),
 			Message: "guest unknown",

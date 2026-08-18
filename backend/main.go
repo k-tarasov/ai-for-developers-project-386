@@ -30,12 +30,22 @@ func loggingMiddleware(logger *slog.Logger, baseURL string) func(http.Handler) h
 			start := time.Now()
 			rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 			next.ServeHTTP(rec, req)
-			logger.Info("request",
-				"method", req.Method,
-				"path", req.URL.Path,
-				"status", rec.status,
-				"duration_ms", time.Since(start).Milliseconds(),
-			)
+			
+			if rec.status >= http.StatusBadRequest {
+				logger.Error("request failed",
+					"method", req.Method,
+					"path", req.URL.Path,
+					"status", rec.status,
+					"duration_ms", time.Since(start).Milliseconds(),
+				)
+			} else {
+				logger.Info("request",
+					"method", req.Method,
+					"path", req.URL.Path,
+					"status", rec.status,
+					"duration_ms", time.Since(start).Milliseconds(),
+				)
+			}
 		})
 	}
 }
