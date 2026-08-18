@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 
 import { errorMessage } from '@/api/errors'
-import { useLoginOwner } from '@/api/queries'
+import { queryKeys, useLoginOwner } from '@/api/queries'
 import { useOwnerAuth } from '@/auth/use-owner-session'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -18,6 +19,7 @@ import { Label } from '@/components/ui/label'
 export function OwnerLoginDialog() {
   const { loginOpen, closeLogin, setOwner } = useOwnerAuth()
   const login = useLoginOwner()
+  const queryClient = useQueryClient()
   const [loginValue, setLoginValue] = useState('')
   const [password, setPassword] = useState('')
 
@@ -31,6 +33,9 @@ export function OwnerLoginDialog() {
           setLoginValue('')
           setPassword('')
           closeLogin()
+          void queryClient.invalidateQueries({ queryKey: queryKeys.eventTypes })
+          void queryClient.invalidateQueries({ queryKey: queryKeys.schedule })
+          void queryClient.invalidateQueries({ queryKey: queryKeys.bookings })
         },
       },
     )
