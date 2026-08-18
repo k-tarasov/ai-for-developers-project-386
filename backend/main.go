@@ -14,6 +14,14 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// healthHandler отвечает на проверки живости (Render, балансировщики,
+// docker healthcheck по HTTP): 200 и тело {"status":"ok"}.
+func healthHandler(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"status":"ok"}`))
+}
+
 type statusRecorder struct {
 	http.ResponseWriter
 	status int
@@ -67,6 +75,8 @@ func main() {
 	r.Use(handler.WithRequest)
 	r.Use(loggingMiddleware(logger, "/api"))
 	api.HandlerFromMuxWithBaseURL(ss, r, "/api")
+
+	r.Get("/healthz", healthHandler)
 
 	logger.Info("starting server", "addr", cfg.ServerAddr)
 	if err := http.ListenAndServe(cfg.ServerAddr, r); err != nil {
