@@ -26,8 +26,9 @@ export function GuestForm({ onCreated }: { onCreated?: () => void }) {
     createGuest.mutate(
       {
         name: name.trim(),
-        guestPhone: guestPhone.trim(),
-        guestEmail: guestEmail.trim(),
+        // Пустые строки не отправляем: бэкенд валидирует формат email и отвечает 400.
+        guestPhone: guestPhone.trim() || undefined,
+        guestEmail: guestEmail.trim() || undefined,
         rememberMe,
       },
       { onSuccess: () => onCreated?.() },

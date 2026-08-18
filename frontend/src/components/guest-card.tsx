@@ -25,7 +25,13 @@ export function GuestCard({ profile }: { profile: GuestProfile }) {
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
     updateGuest.mutate(
-      { id: profile.id, name, guestPhone, guestEmail },
+      {
+        id: profile.id,
+        name: name.trim(),
+        // Пустые строки не отправляем: бэкенд валидирует формат email и отвечает 400.
+        guestPhone: guestPhone.trim() || undefined,
+        guestEmail: guestEmail.trim() || undefined,
+      },
       { onSuccess: () => setEditing(false) },
     )
   }
@@ -47,7 +53,11 @@ export function GuestCard({ profile }: { profile: GuestProfile }) {
             )}
             <div className="space-y-2">
               <Label htmlFor="guest-name">Имя</Label>
-              <Input id="guest-name" value={name} onChange={(event) => setName(event.target.value)} />
+              <Input
+                id="guest-name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="guest-phone">Телефон</Label>
