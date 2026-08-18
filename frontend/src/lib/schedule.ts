@@ -19,7 +19,8 @@ export function emptySchedule(): WeeklySchedule {
 export function normalizeSchedule(schedule: WeeklySchedule): WeeklySchedule {
   const normalized = {} as WeeklySchedule
   for (const { key } of DAYS) {
-    normalized[key] = schedule[key].map((interval) => ({
+    const intervals = schedule[key] ?? []
+    normalized[key] = intervals.map((interval) => ({
       start: normalizeTime(interval.start),
       end: normalizeTime(interval.end),
     }))

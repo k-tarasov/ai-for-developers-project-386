@@ -13,18 +13,18 @@ interface WeeklyScheduleEditorProps {
 
 export function WeeklyScheduleEditor({ value, onChange, disabled }: WeeklyScheduleEditorProps) {
   function updateInterval(day: keyof WeeklySchedule, index: number, patch: Partial<TimeInterval>) {
-    const intervals = value[day].map((interval, i) =>
+    const intervals = (value[day] ?? []).map((interval, i) =>
       i === index ? { ...interval, ...patch } : interval,
     )
     onChange({ ...value, [day]: intervals })
   }
 
   function addInterval(day: keyof WeeklySchedule) {
-    onChange({ ...value, [day]: [...value[day], { start: '09:00', end: '13:00' }] })
+    onChange({ ...value, [day]: [...(value[day] ?? []), { start: '09:00', end: '13:00' }] })
   }
 
   function removeInterval(day: keyof WeeklySchedule, index: number) {
-    onChange({ ...value, [day]: value[day].filter((_, i) => i !== index) })
+    onChange({ ...value, [day]: (value[day] ?? []).filter((_, i) => i !== index) })
   }
 
   return (
@@ -32,10 +32,10 @@ export function WeeklyScheduleEditor({ value, onChange, disabled }: WeeklySchedu
       {DAYS.map(({ key, label }) => (
         <div key={key} className="flex flex-wrap items-center gap-2">
           <span className="w-28 text-sm font-medium">{label}</span>
-          {value[key].length === 0 && (
+          {(value[key] ?? []).length === 0 && (
             <span className="text-sm text-muted-foreground">Недоступно</span>
           )}
-          {value[key].map((interval, index) => (
+          {(value[key] ?? []).map((interval, index) => (
             <span key={index} className="flex items-center gap-1">
               <Input
                 type="time"
