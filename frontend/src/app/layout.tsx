@@ -2,6 +2,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router'
 
 import { useOwnerAuth } from '@/auth/use-owner-session'
 import { OwnerLoginDialog } from '@/components/owner-login-dialog'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 const guestLinks = [{ to: '/', label: 'Записаться' }]
@@ -30,8 +31,13 @@ function NavItem({ to, label }: { to: string; label: string }) {
 }
 
 export function Layout() {
-  const { isOwner, openLogin } = useOwnerAuth()
+  const { isOwner, openLogin, clearOwner } = useOwnerAuth()
   const navigate = useNavigate()
+
+  function handleLogout() {
+    clearOwner()
+    void navigate('/')
+  }
 
   return (
     <div className="flex min-h-svh flex-col">
@@ -65,6 +71,9 @@ export function Layout() {
                   <NavItem key={link.to} {...link} />
                 ))}
               </nav>
+              <Button variant="outline" size="sm" onClick={handleLogout}>
+                Выйти
+              </Button>
             </>
           )}
         </div>
