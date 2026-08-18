@@ -1,4 +1,4 @@
-.PHONY: lint test build dev dev-mock format e2e spec be-generate be-build be-run be-test be-lint
+.PHONY: lint test build dev dev-mock format e2e spec be-generate be-build be-run be-test be-lint be-docker-build be-docker-run
 
 SPEC := spec/tsp-output/@typespec/openapi3/openapi.yaml
 BACKEND := backend
@@ -48,3 +48,9 @@ be-test:
 
 be-lint:
 	cd $(BACKEND) && go vet ./...
+
+be-docker-build:
+	docker build -t bookingapi .
+
+be-docker-run:
+	docker run --rm -p 8080:8080 --env-file $(BACKEND)/.env bookingapi
