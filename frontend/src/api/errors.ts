@@ -103,8 +103,7 @@ const FIXED_MESSAGES: Partial<Record<ApiErrorCode, string>> = {
 }
 
 /** Пользовательское сообщение об ошибке по коду из контракта. */
-export function errorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
+export function errorMessage(error: unknown): string {  if (error instanceof ApiError) {
     if (error.code && SERVER_MESSAGE_CODES.includes(error.code)) {
       return error.message
     }
@@ -115,4 +114,9 @@ export function errorMessage(error: unknown): string {
     return error.message
   }
   return 'Что-то пошло не так. Попробуйте ещё раз.'
+}
+
+/** true, если ошибка — это HTTP 401 (сессия владельца истекла/недействительна). */
+export function isUnauthorized(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 401
 }

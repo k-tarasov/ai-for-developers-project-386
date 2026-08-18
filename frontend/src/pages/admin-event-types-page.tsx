@@ -12,6 +12,7 @@ import {
   useEventTypes,
   useUpdateEventType,
 } from '@/api/queries'
+import { useHandleUnauthorized } from '@/auth/use-handle-unauthorized'
 import { QueryError } from '@/components/query-error'
 import { WeeklyScheduleEditor } from '@/components/weekly-schedule-editor'
 import { emptySchedule, normalizeSchedule } from '@/lib/schedule'
@@ -97,6 +98,7 @@ function EventTypeFormDialog({ open, onOpenChange, initial }: EventTypeFormDialo
   const createEventType = useCreateEventType()
   const updateEventType = useUpdateEventType()
   const [submitError, setSubmitError] = useState<unknown>(null)
+  useHandleUnauthorized(submitError, submitError != null)
 
   const form = useForm<EventTypeFormValues>({
     resolver: zodResolver(eventTypeFormSchema),
@@ -271,6 +273,8 @@ function EventTypeFormDialog({ open, onOpenChange, initial }: EventTypeFormDialo
 export function AdminEventTypesPage() {
   const query = useEventTypes()
   const deleteEventType = useDeleteEventType()
+  useHandleUnauthorized(query.error, query.isError)
+  useHandleUnauthorized(deleteEventType.error, deleteEventType.isError)
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<EventType | undefined>(undefined)
   const [deleting, setDeleting] = useState<EventType | undefined>(undefined)

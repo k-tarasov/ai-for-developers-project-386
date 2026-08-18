@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { errorMessage } from '@/api/errors'
 import type { WeeklySchedule } from '@/api/queries'
 import { useSchedule, useUpdateSchedule } from '@/api/queries'
+import { useHandleUnauthorized } from '@/auth/use-handle-unauthorized'
 import { QueryError } from '@/components/query-error'
 import { WeeklyScheduleEditor } from '@/components/weekly-schedule-editor'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -12,6 +13,7 @@ import { normalizeSchedule } from '@/lib/schedule'
 
 function ScheduleEditor({ initialSchedule }: { initialSchedule: WeeklySchedule }) {
   const updateSchedule = useUpdateSchedule()
+  useHandleUnauthorized(updateSchedule.error, updateSchedule.isError)
   const [draft, setDraft] = useState<WeeklySchedule>(() => normalizeSchedule(initialSchedule))
   const [saved, setSaved] = useState(false)
 
@@ -53,6 +55,7 @@ function ScheduleEditor({ initialSchedule }: { initialSchedule: WeeklySchedule }
 
 export function AdminSchedulePage() {
   const query = useSchedule()
+  useHandleUnauthorized(query.error, query.isError)
 
   if (query.isPending) {
     return <Skeleton className="h-64 w-full" />

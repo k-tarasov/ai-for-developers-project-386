@@ -1,4 +1,5 @@
 import { useBookings } from '@/api/queries'
+import { useHandleUnauthorized } from '@/auth/use-handle-unauthorized'
 import { QueryError } from '@/components/query-error'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -13,6 +14,7 @@ import { formatUtcDateTime, formatUtcTime } from '@/lib/datetime'
 
 export function AdminBookingsPage() {
   const query = useBookings()
+  useHandleUnauthorized(query.error, query.isError)
 
   if (query.isPending) {
     return <Skeleton className="h-64 w-full" />
