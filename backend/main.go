@@ -78,6 +78,12 @@ func main() {
 
 	r.Get("/healthz", healthHandler)
 
+	staticDir := buildDir()
+	if info, err := os.Stat(staticDir); err != nil || !info.IsDir() {
+		logger.Warn("static dir not found, SPA will not be served", "dir", staticDir)
+	}
+	r.Get("/*", spaHandler(staticDir, "/api"))
+
 	logger.Info("starting server", "addr", cfg.ServerAddr)
 	if err := http.ListenAndServe(cfg.ServerAddr, r); err != nil {
 		logger.Error("server stopped", "error", err)
