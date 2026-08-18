@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useState } from 'react'
+import { useForm, useWatch } from 'react-hook-form'
 import { z } from 'zod'
 
 import { errorMessage } from '@/api/errors'
@@ -92,9 +92,25 @@ interface EventTypeFormDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   initial?: EventType
+  resetKey: number
 }
 
-function EventTypeFormDialog({ open, onOpenChange, initial }: EventTypeFormDialogProps) {
+function EventTypeFormDialog({ open, onOpenChange, initial, resetKey }: EventTypeFormDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-2xl">
+        <EventTypeForm key={resetKey} initial={initial} onOpenChange={onOpenChange} />
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+interface EventTypeFormProps {
+  initial?: EventType
+  onOpenChange: (open: boolean) => void
+}
+
+function EventTypeForm({ initial, onOpenChange }: EventTypeFormProps) {
   const createEventType = useCreateEventType()
   const updateEventType = useUpdateEventType()
   const [submitError, setSubmitError] = useState<unknown>(null)
@@ -103,34 +119,23 @@ function EventTypeFormDialog({ open, onOpenChange, initial }: EventTypeFormDialo
   const form = useForm<EventTypeFormValues>({
     resolver: zodResolver(eventTypeFormSchema),
     defaultValues: {
-      id: '',
-      title: '',
-      description: '',
-      durationMinutes: '30',
-      hasOwnAvailability: false,
-      availability: emptySchedule(),
+      id: initial?.id ?? '',
+      title: initial?.title ?? '',
+      description: initial?.description ?? '',
+      durationMinutes: String(initial?.durationMinutes ?? 30),
+      hasOwnAvailability: initial?.availability != null,
+      availability: initial?.availability
+        ? normalizeSchedule(initial.availability)
+        : emptySchedule(),
     },
   })
 
-  useEffect(() => {
-    if (open) {
-      setSubmitError(null)
-      form.reset({
-        id: initial?.id ?? '',
-        title: initial?.title ?? '',
-        description: initial?.description ?? '',
-        durationMinutes: String(initial?.durationMinutes ?? 30),
-        hasOwnAvailability: initial?.availability != null,
-        availability: initial?.availability
-          ? normalizeSchedule(initial.availability)
-          : emptySchedule(),
-      })
-    }
-  }, [open, initial, form])
-
   const isEdit = initial != null
   const isPending = createEventType.isPending || updateEventType.isPending
-  const hasOwnAvailability = form.watch('hasOwnAvailability')
+  const hasOwnAvailability = useWatch({
+    control: form.control,
+    name: 'hasOwnAvailability',
+  })
 
   function handleSubmit(values: EventTypeFormValues) {
     const body: EventType = {
@@ -149,9 +154,8 @@ function EventTypeFormDialog({ open, onOpenChange, initial }: EventTypeFormDialo
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader>
+    <>
+      <DialogHeader>
           <DialogTitle>{isEdit ? 'Редактировать тип события' : 'Новый тип события'}</DialogTitle>
           <DialogDescription>
             Вид записи, который гости видят на странице бронирования.
@@ -265,8 +269,7 @@ function EventTypeFormDialog({ open, onOpenChange, initial }: EventTypeFormDialo
             </DialogFooter>
           </form>
         </Form>
-      </DialogContent>
-    </Dialog>
+    </>
   )
 }
 
@@ -277,6 +280,7 @@ export function AdminEventTypesPage() {
   useHandleUnauthorized(deleteEventType.error, deleteEventType.isError)
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<EventType | undefined>(undefined)
+  const [formNonce, setFormNonce] = useState(0)
   const [deleting, setDeleting] = useState<EventType | undefined>(undefined)
 
   if (query.isPending) {
@@ -296,6 +300,7 @@ export function AdminEventTypesPage() {
         <Button
           onClick={() => {
             setEditing(undefined)
+            setFormNonce((n) => n + 1)
             setFormOpen(true)
           }}
         >
@@ -337,6 +342,7 @@ export function AdminEventTypesPage() {
                     aria-label="Редактировать"
                     onClick={() => {
                       setEditing(eventType)
+                      setFormNonce((n) => n + 1)
                       setFormOpen(true)
                     }}
                   >
@@ -357,7 +363,12 @@ export function AdminEventTypesPage() {
         </Table>
       )}
 
-      <EventTypeFormDialog open={formOpen} onOpenChange={setFormOpen} initial={editing} />
+      <EventTypeFormDialog
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        initial={editing}
+        resetKey={formNonce}
+      />
 
       <Dialog open={deleting != null} onOpenChange={(open) => !open && setDeleting(undefined)}>
         <DialogContent>
